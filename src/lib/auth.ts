@@ -52,8 +52,10 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
 export const authPlugin = new Elysia({ name: "auth" }).macro({
   auth: {
     detail: { security: [{ bearerAuth: [] }] },
-    async resolve({ headers, status }) {
-      const token = headers.authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
+    // `request.headers` y no `headers`: Elysia solo llena `headers` si detecta su
+    // uso leyendo el código fuente, y con el código minificado no lo detecta.
+    async resolve({ request, status }) {
+      const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
       const user = token ? await verifySession(token) : null;
       if (!user) return status(401, { error: "No autenticado: inicia sesión de nuevo" });
       return { user };
