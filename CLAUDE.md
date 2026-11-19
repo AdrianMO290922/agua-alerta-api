@@ -38,7 +38,8 @@ No hay frontend todavía (será Nuxt; ver §3 de decisiones-tecnicas).
 - `reports_one_per_device unique (leak_id, device_id)`: un error `23505` con ese `constraint_name` significa "ya confirmaste esta fuga" → 409.
 - Columnas `geom` (`geography(Point, 4326)`): escribirlas siempre con `geoPoint(lat, lng)` de `src/db/schema.ts`. `st_makepoint` recibe `(lng, lat)`.
 - `leaks.max_severity` se puede subir con `greatest(max_severity, 'chorro'::severity_level)`: el enum está ordenado goteo < chorro < inundacion.
-- Sin RLS a propósito: Elysia es la frontera de seguridad y se conecta como `postgres` por `DATABASE_URL` (pooler de transacciones, puerto 6543, `prepare: false`). Los privilegios por defecto del proyecto no dan acceso a `anon`/`authenticated` sobre `public`, así que la Data API de Supabase no expone nada. El advisory lock debe ser `pg_advisory_xact_lock` (de transacción): los de sesión no funcionan con el pooler.
+- Conexión: en el Worker, por **Hyperdrive** (binding `HYPERDRIVE`, origen = session pooler 5432, `sslmode=require`, caché de consultas desactivada para que el dashboard vea los reportes al instante). En Bun (scripts), por `DATABASE_URL` (transaction pooler 6543) con `ssl: "require"`. No se puede conectar directo desde Workers con TLS: el pooler usa un certificado de la CA privada de Supabase y Workers solo acepta CAs públicas. `withDb()` elige la vía según el runtime.
+- Sin RLS a propósito: Elysia es la frontera de seguridad y se conecta como `postgres` (`prepare: false`). Los privilegios por defecto del proyecto no dan acceso a `anon`/`authenticated` sobre `public`, así que la Data API de Supabase no expone nada. El advisory lock debe ser `pg_advisory_xact_lock` (de transacción): los de sesión no funcionan con el pooler.
 
 ## API
 
@@ -51,9 +52,12 @@ Documentación interactiva en `/docs` (Scalar, versión fija). Convenciones: JSO
 - Consultas con `db.execute()` (SQL directo): el driver devuelve fechas como texto, no `Date`. Formatearlas en SQL (ver `findNearbyLeaks`).
 - Sin rate limit todavía (decisiones-tecnicas §6 pide 10 reportes/hora por IP).
 
-## Pendiente que bloquea Workers: TLS hacia Supabase
+## Despliegue
 
-`withDb()` usa `ssl: "require"`. En Bun funciona (cifra sin validar la cadena), pero **en Workers, local y producción, toda ruta que toca la BD falla**: el pooler presenta un certificado de la CA privada de Supabase ("Supabase Intermediate 2021 CA") y el runtime de Workers solo acepta CAs públicas. Sin TLS sí conecta, pero en texto plano (incluidas las contraseñas del login). Solución propuesta: Hyperdrive. Mientras tanto, las rutas se prueban en Bun con `app.handle()`.
+- Producción: https://agua-alerta-api.adrian9012.workers.dev (docs en `/docs`).
+- **No desplegar con `--minify`.** Elysia decide qué partes del request procesar (p. ej. `headers`) leyendo el código fuente de cada handler; minificado no lo detecta y las rutas protegidas daban 500. Producción debe correr el mismo código que `wrangler dev`.
+- CORS abierto a cualquier origen (sin `CORS_ORIGIN` en `wrangler.jsonc`), por decisión del equipo durante el hackathon.
+- Secretos del Worker: solo `JWT_SECRET`. `DATABASE_URL` no hace falta allí (la conexión va por Hyperdrive).
 
 ## Comandos
 
@@ -62,7 +66,7 @@ Todos se corren desde `agua-alerta-api/`:
 ```bash
 bun install          # instalar dependencias
 bun run dev          # wrangler dev (Worker local, lee .env) en http://localhost:8787
-bun run deploy       # wrangler deploy --minify (producción, Cloudflare Workers)
+bun run deploy       # wrangler deploy (producción, Cloudflare Workers; sin --minify)
 bunx tsc --noEmit    # verificación de tipos (tsconfig en modo strict)
 bun run usuario:crear <email> "<nombre>" [admin|operador]   # alta de usuario del panel
 ```
@@ -72,8 +76,8 @@ No hay tests: el script `test` de `package.json` es un placeholder que sale con 
 ## Detalles a tener en cuenta
 
 - `tsconfig.json` usa `"types": ["bun-types"]`, `module: ES2022`, `moduleResolution: bundler` y `strict: true`.
-- Variables: en Workers llegan por `process.env` (flag `nodejs_compat`), también a nivel de módulo. No secretas en `vars` de `wrangler.jsonc`; secretas (`DATABASE_URL`, `JWT_SECRET`) con `wrangler secret put`. En local, wrangler lee `.env`. `CORS_ORIGIN` acepta varios orígenes separados por coma.
-- Los bindings (R2 `FOTOS`) **no** están en `process.env`: se importan con `import { env } from "cloudflare:workers"`. Sus tipos mínimos están en `src/types/cloudflare.d.ts` (no se usa `@cloudflare/workers-types` porque choca con `bun-types`).
+- Variables: en Workers llegan por `process.env` (flag `nodejs_compat`), también a nivel de módulo. No secretas en `vars` de `wrangler.jsonc`; secretas (`JWT_SECRET`) con `wrangler secret put`. En local, wrangler lee `.env`, incluida `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` para emular Hyperdrive. `CORS_ORIGIN` (opcional) acepta varios orígenes separados por coma.
+- Los bindings (R2 `FOTOS`, `HYPERDRIVE`) **no** están en `process.env`: se importan con `import { env } from "cloudflare:workers"`. Sus tipos mínimos están en `src/types/cloudflare.d.ts` (no se usa `@cloudflare/workers-types` porque choca con `bun-types`).
 - En `wrangler dev` las fotos van al R2 local simulado, así que su `photo_url` pública no existe. Para usar el bucket real en dev, agregar `"remote": true` al binding.
 - El campo `"module": "src/index.js"` de `package.json` y el `.gitignore` (plantilla de Next.js) son restos del scaffold; el punto de entrada real es `src/index.ts`.
 - `elysia` está fijado a `latest`.
