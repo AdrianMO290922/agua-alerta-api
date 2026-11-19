@@ -4,6 +4,7 @@ import { t } from "elysia";
 import type { SchemaOptions } from "@sinclair/typebox";
 import type { InferSelectViewModel } from "drizzle-orm";
 import type { leaksRanked } from "../db";
+import type { CrewLoad } from "../services/crews";
 
 const iso = (d: Date) => d.toISOString();
 const isoOrNull = (d: Date | null) => (d ? d.toISOString() : null);
@@ -82,19 +83,38 @@ export const AdminLeak = t.Composite([
     zone_size: t.Integer({ description: "Fugas activas en su zona (≥3 = posible falla en red primaria)" }),
     attended_at: t.Nullable(DateTime),
     resolved_at: t.Nullable(DateTime),
+    sector_id: t.Nullable(t.Integer({ description: "Zona de servicio (GET /admin/sectors); null = fuera de cobertura" })),
+    sector_name: t.Nullable(t.String()),
+    sector_color: t.Nullable(t.String()),
+    suggested_crew_id: t.Nullable(
+      t.Integer({ description: "Cuadrilla de su zona con menos carga; null si no hay zona o la zona no tiene cuadrillas" }),
+    ),
+    suggested_crew_name: t.Nullable(t.String()),
   }),
 ]);
 
-export const toAdminLeak = (r: RankedRow, crewName: string | null) => ({
+export type AdminLeakExtra = {
+  crewName: string | null;
+  sectorName: string | null;
+  sectorColor: string | null;
+  suggested: { id: number; name: string } | null;
+};
+
+export const toAdminLeak = (r: RankedRow, x: AdminLeakExtra) => ({
   ...toPin(r),
   confirmation_count: r.confirmationCount,
   is_recurrent: r.isRecurrent,
   crew_id: r.crewId,
-  crew_name: crewName,
+  crew_name: x.crewName,
   zone_id: r.zoneId,
   zone_size: r.zoneSize,
   attended_at: isoOrNull(r.attendedAt),
   resolved_at: isoOrNull(r.resolvedAt),
+  sector_id: r.sectorId,
+  sector_name: x.sectorName,
+  sector_color: x.sectorColor,
+  suggested_crew_id: x.suggested?.id ?? null,
+  suggested_crew_name: x.suggested?.name ?? null,
 });
 
 export const NearbyLeak = t.Object({
@@ -114,9 +134,62 @@ export const Zone = t.Object({
   center_lat: t.Number(),
   center_lng: t.Number(),
   leak_ids: t.Array(Uuid),
+  sector_id: t.Nullable(t.Integer({ description: "Zona de servicio donde cae la mayoría de sus fugas" })),
+  sector_name: t.Nullable(t.String({ description: "Para el panel: \"Zona Centro · 3 fugas\"" })),
 });
 
 // --- Admin ----------------------------------------------------------------
 export const UserRole = oneOf(["admin", "operador"]);
 export const SessionUser = t.Object({ id: Uuid, email: t.String(), name: t.String(), role: UserRole });
-export const Crew = t.Object({ id: t.Integer(), name: t.String() });
+
+export const Crew = t.Object({
+  id: t.Integer(),
+  name: t.String(),
+  sector_id: t.Nullable(t.Integer({ description: "Zona a la que pertenece; null = sin zona (comodín)" })),
+  sector_name: t.Nullable(t.String()),
+  active_leaks: t.Integer({ description: "Fugas pendientes o en atención asignadas" }),
+  max_active_leaks: t.Integer({ description: "Capacidad: fugas activas que puede llevar a la vez" }),
+  saturated: t.Boolean({ description: "active_leaks ≥ max_active_leaks" }),
+});
+
+export const toCrew = (c: CrewLoad) => ({
+  id: c.id,
+  name: c.name,
+  sector_id: c.sectorId,
+  sector_name: c.sectorName,
+  active_leaks: c.activeLeaks,
+  max_active_leaks: c.maxActiveLeaks,
+  saturated: c.saturated,
+});
+
+export const GeoMultiPolygon = t.Object(
+  {
+    type: t.Literal("MultiPolygon"),
+    coordinates: t.Array(t.Array(t.Array(t.Array(t.Number())))),
+  },
+  { description: "GeoJSON en [lng, lat], listo para dibujar en Leaflet/MapLibre" },
+);
+export type GeoMultiPolygon = { type: "MultiPolygon"; coordinates: number[][][][] };
+
+export const HexColor = t.String({ pattern: "^#[0-9a-fA-F]{6}$", description: "#rrggbb para el mapa" });
+
+export const Sector = t.Object({
+  id: t.Integer(),
+  name: t.String(),
+  color: HexColor,
+  neighborhoods: t.Array(t.String(), { description: "Colonias que cubre" }),
+  manager_name: t.Nullable(t.String({ description: "Responsable de la zona" })),
+  manager_phone: t.Nullable(t.String()),
+  priority_points: t.Integer({ minimum: 0, maximum: 15, description: "Se suman al índice de urgencia de sus fugas" }),
+  priority_reason: t.Nullable(t.String()),
+  crews: t.Array(Crew, { description: "Cuadrillas de la zona con su carga" }),
+  suggested_crew_id: t.Nullable(t.Integer({ description: "La no saturada con menos carga" })),
+  geometry: GeoMultiPolygon,
+});
+
+export const AssignWarning = t.Object({
+  code: oneOf(["crew_other_sector", "crew_saturated"], {
+    description: "crew_other_sector: la cuadrilla es de otra zona · crew_saturated: rebasó su capacidad",
+  }),
+  message: t.String({ description: "Texto listo para mostrar al admin" }),
+});

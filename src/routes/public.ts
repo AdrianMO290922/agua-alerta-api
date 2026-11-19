@@ -1,7 +1,7 @@
 // App ciudadana: acceso libre, sin login.
 import { Elysia, t } from "elysia";
-import { and, asc, between, desc, eq, inArray } from "drizzle-orm";
-import { ACTIVE_STATUSES, findNearbyLeaks, leaksRanked, withDb, zonesRanked, type Db } from "../db";
+import { and, asc, between, desc, eq, getViewSelectedFields, inArray } from "drizzle-orm";
+import { ACTIVE_STATUSES, findNearbyLeaks, leaksRanked, sectors, withDb, zonesRanked, type Db } from "../db";
 import { loadConfig, radiiFor } from "../lib/config";
 import {
   ErrorRes,
@@ -202,7 +202,13 @@ export const publicRoutes = new Elysia({ tags: ["Ciudadano"] })
   .get(
     "/zones",
     async () => {
-      const rows = await withDb((db) => db.select().from(zonesRanked).orderBy(desc(zonesRanked.litersPerDay)));
+      const rows = await withDb((db) =>
+        db
+          .select({ ...getViewSelectedFields(zonesRanked), sectorName: sectors.name })
+          .from(zonesRanked)
+          .leftJoin(sectors, eq(sectors.id, zonesRanked.sectorId))
+          .orderBy(desc(zonesRanked.litersPerDay)),
+      );
       return rows.map((z) => ({
         zone_id: z.zoneId,
         leak_count: z.leakCount,
@@ -211,6 +217,8 @@ export const publicRoutes = new Elysia({ tags: ["Ciudadano"] })
         center_lat: z.centerLat,
         center_lng: z.centerLng,
         leak_ids: z.leakIds,
+        sector_id: z.sectorId,
+        sector_name: z.sectorName,
       }));
     },
     {
