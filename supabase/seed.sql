@@ -3,9 +3,10 @@
 -- Fuente: Documentacion/agua-alerta-schema.sql, secciones 12 y 13.
 --
 -- Sirve para RESETEAR la demo antes del pitch: el TRUNCATE de abajo borra
--- TODAS las fugas y reportes (incluidos los creados en vivo). app_config y
--- crews no se tocan. Correr en Supabase > SQL Editor, o con:
---   psql "$DATABASE_URL_MIGRATIONS" -f supabase/seed.sql
+-- TODAS las fugas y reportes (incluidos los creados en vivo). app_config,
+-- crews, sectors y users no se tocan. La forma recomendada de correrlo:
+--   bun run fugas:reiniciar --demo   (pide confirmación)
+-- o pegarlo en Supabase > SQL Editor.
 --
 -- La carga inicial del 2026-11-19 se hizo sin el TRUNCATE (tablas vacías).
 -- =====================================================================
@@ -23,7 +24,8 @@ truncate table reports, leaks;
 --   E  → goteo aislado y reciente: urgencia baja
 --   F  → fuga reincidente sobre un punto ya reparado
 --
--- Orden esperado en el dashboard: D(60) A(55) B(48) F(38) C(37) E(12)
+-- Orden esperado en el dashboard: D(70) A(65) B(58) F(48) C(47) E(22)
+-- (las 6 caen en la Zona Centro: ya incluye su prioridad +10)
 -- =====================================================================
 do $$
 declare

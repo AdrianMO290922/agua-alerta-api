@@ -23,6 +23,7 @@ Solo puntúa lo que se demuestra en vivo (Prototipo funcional 45 pts, Impacto 25
 - `src/lib/`: `config.ts` (lee `app_config`, `radiiFor()`), `auth.ts` (JWT HS256 con `jose` + macro `auth: true`), `storage.ts` (fotos a R2), `mqtt.ts` (aviso en tiempo real), `schemas.ts` (esquemas TypeBox de entrada/salida y mapeo fila → JSON).
 - `src/db/schema.ts`: espejo Drizzle de tablas, enums y vistas. `src/db/index.ts`: `withDb()` (una conexión por request, porque en Workers no se comparten), `findNearbyLeaks()` y re-exporta el esquema.
 - `scripts/crear-usuario.ts` (`bun run usuario:crear <email> "<nombre>" [admin|operador]`): alta de usuarios del panel; corre en Bun, no en el Worker.
+- `scripts/reiniciar-fugas.ts` (`bun run fugas:reiniciar [--demo]`): borra todas las fugas y reportes (con `--demo` carga `seed.sql`). Pide escribir `BORRAR`. Apunta a la base de producción.
 - `supabase/migrations/`: SQL aplicado en Supabase vía MCP (`apply_migration`). **Es la fuente de verdad del esquema; no se usa drizzle-kit.** Si cambias el SQL, actualiza `src/db/schema.ts`.
 - `supabase/seed.sql`: datos de demo en Morelia. Empieza con `TRUNCATE reports, leaks`: resetea la demo, no lo corras sobre datos que quieras conservar.
 - Fotos en **Cloudflare R2** (binding `FOTOS` en `wrangler.jsonc`), no en Supabase Storage.
@@ -76,6 +77,7 @@ bun run dev          # wrangler dev (Worker local, lee .env) en http://localhost
 bun run deploy       # wrangler deploy (producción, Cloudflare Workers; sin --minify)
 bunx tsc --noEmit    # verificación de tipos (tsconfig en modo strict)
 bun run usuario:crear <email> "<nombre>" [admin|operador]   # alta de usuario del panel
+bun run fugas:reiniciar [--demo]   # borrar fugas y reportes (producción); --demo carga seed.sql
 ```
 
 No hay tests: el script `test` de `package.json` es un placeholder que sale con error. Si se agregan, usar el runner de Bun (`bun test`, o `bun test ruta/archivo.test.ts` para uno solo).

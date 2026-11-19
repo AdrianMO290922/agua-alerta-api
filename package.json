@@ -5,7 +5,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "usuario:crear": "bun run scripts/crear-usuario.ts"
+    "usuario:crear": "bun run scripts/crear-usuario.ts",
+    "fugas:reiniciar": "bun run scripts/reiniciar-fugas.ts"
   },
   "dependencies": {
     "@elysiajs/cors": "^1.4.3",

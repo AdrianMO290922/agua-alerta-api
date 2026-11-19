@@ -11,7 +11,8 @@ import type { LeakStatus, Severity } from "./schema";
 
 export * from "./schema";
 
-export type Db = PostgresJsDatabase<typeof schema>;
+/** `$client` es el cliente de postgres-js (p. ej. para `.simple()` con varias sentencias). */
+export type Db = PostgresJsDatabase<typeof schema> & { $client: postgres.Sql };
 /** `db` o la `tx` de `db.transaction(...)`. */
 export type Executor = PgDatabase<PostgresJsQueryResultHKT, typeof schema>;
 
