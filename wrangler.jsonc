@@ -10,7 +10,7 @@
   "r2_buckets": [{ "binding": "FOTOS", "bucket_name": "reportes" }],
 
   // Solo valores NO secretos. Los secretos se cargan con `wrangler secret put`:
-  // DATABASE_URL, SUPABASE_SECRET_KEY, ADMIN_API_KEY
+  // DATABASE_URL, JWT_SECRET (SUPABASE_SECRET_KEY no lo usa el código: Elysia entra por DATABASE_URL)
   "vars": {
     "SUPABASE_URL": "https://ekxksaqxnplkgmdcdygk.supabase.co",
     "R2_STORAGE_BUCKET": "reportes",
