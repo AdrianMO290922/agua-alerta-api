@@ -15,22 +15,42 @@ export type Db = PostgresJsDatabase<typeof schema>;
 /** `db` o la `tx` de `db.transaction(...)`. */
 export type Executor = PgDatabase<PostgresJsQueryResultHKT, typeof schema>;
 
-// PENDIENTE (bloquea Workers): el pooler de Supabase presenta un certificado de
-// su CA privada (Supabase Intermediate 2021 CA). Bun cifra sin validar la cadena
-// (ssl: "require"), pero el runtime de Workers siempre valida contra CAs públicas y
-// rechaza el handshake. Solución propuesta: Hyperdrive. Ver CLAUDE.md.
+/** Falta configuración (no es un fallo de red). /health muestra el mensaje tal cual. */
+export class DbConfigError extends Error {}
+
+const IN_WORKERS = typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers";
+
+/**
+ * De dónde sale la conexión:
+ * - Worker: binding HYPERDRIVE (vía documentada por Cloudflare). El tramo
+ *   Worker → Hyperdrive va por la red interna de Cloudflare y Hyperdrive →
+ *   Supabase va cifrado (sslmode=require). Conectar directo con TLS no sirve: el
+ *   pooler usa un certificado de la CA privada de Supabase y Workers solo acepta
+ *   CAs públicas.
+ * - Bun (scripts y pruebas): DATABASE_URL con TLS (cifra sin validar esa CA).
+ */
+async function connection(): Promise<{ url: string; ssl?: "require" }> {
+  if (IN_WORKERS) {
+    // Import dinámico: el módulo solo existe en Workers y este archivo también lo usa Bun.
+    const { env } = await import("cloudflare:workers");
+    if (!env.HYPERDRIVE) throw new DbConfigError("Falta el binding HYPERDRIVE (wrangler.jsonc)");
+    return { url: env.HYPERDRIVE.connectionString };
+  }
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new DbConfigError("DATABASE_URL no configurada");
+  return { url, ssl: "require" };
+}
 
 /**
  * Abre una conexión, ejecuta `fn` y la cierra.
- * En Workers no se comparten conexiones entre requests: cada request usa la suya.
+ * En Workers no se comparten conexiones entre requests: cada request usa la suya
+ * (con Hyperdrive abrirla es barato; él mantiene el pool hacia Supabase).
  */
 export async function withDb<T>(fn: (db: Db) => Promise<T>): Promise<T> {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL no configurada");
-
+  const { url, ssl } = await connection();
   const client = postgres(url, {
-    ssl: "require", // sin esto postgres-js conecta en texto plano
-    prepare: false, // el transaction pooler de Supabase (6543) no soporta prepared statements
+    ...(ssl && { ssl }),
+    prepare: false, // el transaction pooler de Supabase (6543) que usa Bun no los soporta
     max: 1,
     connect_timeout: 5,
     fetch_types: false, // ahorra un viaje a la BD por request; Drizzle parsea los arrays

@@ -7,7 +7,12 @@ declare module "cloudflare:workers" {
   interface R2Bucket {
     put(key: string, value: ArrayBuffer | ArrayBufferView | string | Blob | null, options?: R2PutOptions): Promise<unknown>;
   }
+  interface Hyperdrive {
+    /** Cadena hacia el proxy de Hyperdrive dentro de Cloudflare (no es la de Supabase). */
+    connectionString: string;
+  }
   export const env: {
     FOTOS: R2Bucket;
+    HYPERDRIVE?: Hyperdrive;
   };
 }

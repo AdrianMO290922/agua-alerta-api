@@ -3,7 +3,7 @@ import { CloudflareAdapter } from "elysia/adapter/cloudflare-worker";
 import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { sql } from "drizzle-orm";
-import { withDb } from "./db";
+import { DbConfigError, withDb } from "./db";
 import { publicRoutes } from "./routes/public";
 import { adminRoutes } from "./routes/admin";
 
@@ -61,16 +61,13 @@ const app = new Elysia({ adapter: CloudflareAdapter })
   .get(
     "/health",
     async ({ set }) => {
-      if (!process.env.DATABASE_URL) {
-        set.status = 500;
-        return { estado: "error", db: "DATABASE_URL no configurada" };
-      }
       try {
         await withDb((db) => db.execute(sql`select 1`));
         return { estado: "ok", db: "ok" };
-      } catch {
+      } catch (e) {
+        if (!(e instanceof DbConfigError)) console.error(e);
         set.status = 503;
-        return { estado: "error", db: "sin conexión" };
+        return { estado: "error", db: e instanceof DbConfigError ? e.message : "sin conexión" };
       }
     },
     { detail: { tags: ["Sistema"], summary: "Conexión a la base de datos" } },

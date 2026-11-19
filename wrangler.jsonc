@@ -9,14 +9,21 @@
   // Bucket de R2 enlazado al Worker (en código: env.FOTOS). Sin llaves S3.
   "r2_buckets": [{ "binding": "FOTOS", "bucket_name": "reportes" }],
 
-  // Solo valores NO secretos. Los secretos se cargan con `wrangler secret put`:
-  // DATABASE_URL, JWT_SECRET (SUPABASE_SECRET_KEY no lo usa el código: Elysia entra por DATABASE_URL)
+  // Conexión a Supabase (en código: env.HYPERDRIVE). Hyperdrive cifra hacia el
+  // session pooler (5432) y reutiliza conexiones; caché de consultas desactivada
+  // para que el dashboard vea los reportes al instante. La cadena con la
+  // contraseña vive en Cloudflare, no aquí. En `wrangler dev` se usa
+  // CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE de .env.
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "96f32f651adb4ef9928c2449fe148560" }],
+
+  // Solo valores NO secretos. Secretos con `wrangler secret put`: JWT_SECRET.
+  // (DATABASE_URL ya no hace falta en el Worker: la conexión va por Hyperdrive.)
+  // Sin CORS_ORIGIN = cualquier origen puede consultar la API. Para restringir,
+  // agregar "CORS_ORIGIN": "https://front.ejemplo,http://localhost:5173".
   "vars": {
     "SUPABASE_URL": "https://ekxksaqxnplkgmdcdygk.supabase.co",
     "R2_STORAGE_BUCKET": "reportes",
     "R2_PUBLIC_URL": "https://pub-1c644afb74ba42f194cb1e69ad74203e.r2.dev",
-    "CLUSTER_RADIUS_METERS": "100",
-    // Cambiar por la URL real del frontend cuando exista
-    "CORS_ORIGIN": "http://localhost:5173"
+    "CLUSTER_RADIUS_METERS": "100"
   }
 }
