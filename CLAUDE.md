@@ -30,7 +30,8 @@ Todos se corren desde `agua-alerta-api/`:
 
 ```bash
 bun install          # instalar dependencias
-bun run dev          # servidor con recarga (bun --watch src/index.ts) en http://localhost:3000
+bun run dev          # wrangler dev (Worker local, lee .env) en http://localhost:8787
+bun run deploy       # wrangler deploy --minify (producción, Cloudflare Workers)
 bunx tsc --noEmit    # verificación de tipos (tsconfig en modo strict)
 ```
 

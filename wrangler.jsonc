@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "agua-alerta-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Bucket de R2 enlazado al Worker (en código: env.FOTOS). Sin llaves S3.
+  "r2_buckets": [{ "binding": "FOTOS", "bucket_name": "reportes" }],
+
+  // Solo valores NO secretos. Los secretos se cargan con `wrangler secret put`:
+  // DATABASE_URL, SUPABASE_SECRET_KEY, ADMIN_API_KEY
+  "vars": {
+    "SUPABASE_URL": "https://ekxksaqxnplkgmdcdygk.supabase.co",
+    "R2_STORAGE_BUCKET": "reportes",
+    "R2_PUBLIC_URL": "https://pub-1c644afb74ba42f194cb1e69ad74203e.r2.dev",
+    "CLUSTER_RADIUS_METERS": "100",
+    // Cambiar por la URL real del frontend cuando exista
+    "CORS_ORIGIN": "http://localhost:5173"
+  }
+}
