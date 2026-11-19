@@ -1,8 +1,9 @@
-// App admin: login con usuario de la tabla `users`; el resto exige el token.
+// App admin: login con usuario de la tabla `users`; el resto exige el token
+// (salvo en modo pruebas, AUTH_DISABLED="true").
 import { Elysia, t } from "elysia";
 import { and, asc, desc, eq, getViewSelectedFields, inArray, sql } from "drizzle-orm";
 import { ACTIVE_STATUSES, crews, leaks, leaksRanked, users, withDb, type Executor, type LeakStatus } from "../db";
-import { authPlugin, SESSION_HOURS, signSession } from "../lib/auth";
+import { authDisabled, authPlugin, SESSION_HOURS, signSession, userFromRequest } from "../lib/auth";
 import {
   AdminLeak,
   Crew,
@@ -11,9 +12,16 @@ import {
   oneOf,
   SessionUser,
   Severity,
+  UserRole,
   Uuid,
   toAdminLeak,
 } from "../lib/schemas";
+
+const SessionRes = t.Object({
+  token: t.String({ description: "Enviar como `Authorization: Bearer <token>`" }),
+  expires_at: t.String({ format: "date-time" }),
+  user: SessionUser,
+});
 
 const STATUS_FILTERS = {
   activas: [...ACTIVE_STATUSES],
@@ -69,17 +77,63 @@ export const adminRoutes = new Elysia({ prefix: "/admin", tags: ["Admin"] })
         email: t.String({ format: "email" }),
         password: t.String({ minLength: 1 }),
       }),
-      response: {
-        200: t.Object({
-          token: t.String({ description: "Enviar como `Authorization: Bearer <token>`" }),
-          expires_at: t.String({ format: "date-time" }),
-          user: SessionUser,
-        }),
-        401: ErrorRes,
-      },
+      response: { 200: SessionRes, 401: ErrorRes },
       detail: {
         summary: "Iniciar sesión",
-        description: `Devuelve un JWT válido por ${SESSION_HOURS} h. Los usuarios se crean con \`bun run usuario:crear\`.`,
+        description: `Compara la contraseña con el hash bcrypt en Postgres y devuelve un JWT válido por ${SESSION_HOURS} h.`,
+      },
+    },
+  )
+  .post(
+    "/register",
+    async ({ body, request, status }) => {
+      const email = body.email.trim().toLowerCase();
+      const result = await withDb(async (db) => {
+        // Quién puede registrar: cualquiera si aún no hay usuarios (el primero) o en
+        // modo pruebas; si no, solo un admin con sesión.
+        const [{ total }] = await db.select({ total: sql<number>`count(*)::int` }).from(users);
+        if (total > 0 && !authDisabled()) {
+          const caller = await userFromRequest(request);
+          if (!caller) return { code: 401 as const, error: "Inicia sesión como admin para registrar usuarios" };
+          if (caller.role !== "admin") return { code: 403 as const, error: "Solo un admin puede registrar usuarios" };
+        }
+
+        const [dup] = await db.select({ id: users.id }).from(users).where(eq(users.email, email));
+        if (dup) return { code: 409 as const, error: "Ya existe un usuario con ese correo" };
+
+        const [user] = await db
+          .insert(users)
+          .values({
+            email,
+            name: body.name.trim(),
+            role: body.role ?? "operador",
+            // bcrypt (cost 10) calculado por Postgres, igual que lo compara el login
+            passwordHash: sql`extensions.crypt(${body.password}, extensions.gen_salt('bf', 10))`,
+          })
+          .returning({ id: users.id, email: users.email, name: users.name, role: users.role });
+        return { user };
+      });
+
+      if (result.code === 401) return status(401, { error: result.error });
+      if (result.code === 403) return status(403, { error: result.error });
+      if (result.code === 409) return status(409, { error: result.error });
+      const { token, expiresAt } = await signSession(result.user);
+      return status(201, { token, expires_at: expiresAt.toISOString(), user: result.user });
+    },
+    {
+      body: t.Object({
+        email: t.String({ format: "email" }),
+        name: t.String({ minLength: 1, maxLength: 100 }),
+        // bcrypt solo usa los primeros 72 bytes
+        password: t.String({ minLength: 8, maxLength: 72 }),
+        role: t.Optional(UserRole),
+      }),
+      response: { 201: SessionRes, 401: ErrorRes, 403: ErrorRes, 409: ErrorRes },
+      detail: {
+        summary: "Registrar usuario",
+        description:
+          "Crea un usuario del panel (rol `operador` por defecto) y devuelve su sesión, igual que el login. " +
+          "Abierto si todavía no hay usuarios o en modo pruebas (AUTH_DISABLED); si no, requiere token de un `admin`.",
       },
     },
   )

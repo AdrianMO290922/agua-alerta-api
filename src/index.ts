@@ -4,6 +4,7 @@ import { cors } from "@elysiajs/cors";
 import { openapi } from "@elysiajs/openapi";
 import { sql } from "drizzle-orm";
 import { DbConfigError, withDb } from "./db";
+import { authDisabled } from "./lib/auth";
 import { publicRoutes } from "./routes/public";
 import { adminRoutes } from "./routes/admin";
 
@@ -26,9 +27,12 @@ const app = new Elysia({ adapter: CloudflareAdapter })
           title: "Agua Alerta API",
           version: "1.0.0",
           description:
+            (authDisabled()
+              ? "> ⚠️ **Modo pruebas (AUTH_DISABLED)**: las rutas de Admin responden sin token y el registro está abierto.\n\n"
+              : "") +
             "Reporte ciudadano de fugas de agua con agrupación automática e índice de urgencia.\n\n" +
             "- **Ciudadano**: acceso libre, sin login.\n" +
-            "- **Admin**: inicia sesión en `POST /admin/login` y usa el token con el botón *Authorize*.",
+            "- **Admin**: regístrate en `POST /admin/register` o inicia sesión en `POST /admin/login` y usa el token con el botón *Authorize*.",
         },
         tags: [
           { name: "Ciudadano", description: "App pública de reporte" },
@@ -55,9 +59,16 @@ const app = new Elysia({ adapter: CloudflareAdapter })
     set.status = 500;
     return { error: "Error interno del servidor" };
   })
-  .get("/", () => ({ servicio: "agua-alerta-api", estado: "ok", docs: "/docs" }), {
-    detail: { tags: ["Sistema"], summary: "Estado del servicio" },
-  })
+  .get(
+    "/",
+    () => ({
+      servicio: "agua-alerta-api",
+      estado: "ok",
+      docs: "/docs",
+      auth: authDisabled() ? "desactivada (modo pruebas)" : "activa",
+    }),
+    { detail: { tags: ["Sistema"], summary: "Estado del servicio" } },
+  )
   .get(
     "/health",
     async ({ set }) => {

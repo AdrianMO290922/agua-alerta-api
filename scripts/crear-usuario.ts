@@ -16,8 +16,8 @@ if (!email?.includes("@") || !name?.trim() || !ROLES.includes(role as UserRole))
 
 const typed = prompt("Contraseña (Enter para generar una):")?.trim() ?? "";
 const password = typed || Buffer.from(crypto.getRandomValues(new Uint8Array(18))).toString("base64url");
-if (password.length < 10) {
-  console.error("La contraseña debe tener al menos 10 caracteres.");
+if (password.length < 8) {
+  console.error("La contraseña debe tener al menos 8 caracteres.");
   process.exit(1);
 }
 

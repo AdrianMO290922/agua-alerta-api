@@ -21,6 +21,9 @@
   // Sin CORS_ORIGIN = cualquier origen puede consultar la API. Para restringir,
   // agregar "CORS_ORIGIN": "https://front.ejemplo,http://localhost:5173".
   "vars": {
+    // MODO PRUEBAS: rutas de admin sin token y registro abierto, para que el front
+    // pruebe todo. Poner "false" (o borrar la línea) antes de la demo.
+    "AUTH_DISABLED": "true",
     "SUPABASE_URL": "https://ekxksaqxnplkgmdcdygk.supabase.co",
     "R2_STORAGE_BUCKET": "reportes",
     "R2_PUBLIC_URL": "https://pub-1c644afb74ba42f194cb1e69ad74203e.r2.dev",

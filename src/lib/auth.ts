@@ -46,19 +46,40 @@ export async function verifySession(token: string): Promise<SessionUser | null> 
 }
 
 /**
+ * Modo pruebas (AUTH_DISABLED="true" en wrangler.jsonc): las rutas con `auth: true`
+ * no exigen token y el registro queda abierto. APAGAR antes de la demo.
+ */
+export const authDisabled = () => process.env.AUTH_DISABLED === "true";
+
+/** Usuario que reciben las rutas protegidas en modo pruebas cuando no llega token. */
+const TEST_USER: SessionUser = {
+  id: "00000000-0000-0000-0000-000000000000",
+  email: "pruebas@agua-alerta.local",
+  name: "Modo pruebas (sin login)",
+  role: "admin",
+};
+
+/** Usuario del header `Authorization: Bearer`, o null si no hay token válido. */
+export async function userFromRequest(request: Request): Promise<SessionUser | null> {
+  // `request.headers` y no `headers` del contexto: Elysia solo llena `headers` si
+  // detecta su uso leyendo el código fuente, y con código minificado no lo detecta.
+  const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+  return token ? verifySession(token) : null;
+}
+
+/**
  * Macro `auth: true`: exige `Authorization: Bearer <token>` y deja `user` en el contexto.
  * También marca la ruta con el candado de bearerAuth en la documentación.
+ * En modo pruebas, si no hay token válido deja pasar con TEST_USER.
  */
 export const authPlugin = new Elysia({ name: "auth" }).macro({
   auth: {
     detail: { security: [{ bearerAuth: [] }] },
-    // `request.headers` y no `headers`: Elysia solo llena `headers` si detecta su
-    // uso leyendo el código fuente, y con el código minificado no lo detecta.
     async resolve({ request, status }) {
-      const token = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-      const user = token ? await verifySession(token) : null;
-      if (!user) return status(401, { error: "No autenticado: inicia sesión de nuevo" });
-      return { user };
+      const user = await userFromRequest(request);
+      if (user) return { user };
+      if (authDisabled()) return { user: TEST_USER };
+      return status(401, { error: "No autenticado: inicia sesión de nuevo" });
     },
   },
 });
