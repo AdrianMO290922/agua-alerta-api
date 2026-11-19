@@ -45,6 +45,12 @@ const geography = customType<{ data: string }>({
 export const geoPoint = (lat: number, lng: number): SQL =>
   sql`extensions.st_setsrid(extensions.st_makepoint(${lng}, ${lat}), 4326)::extensions.geography`;
 
+// geometry(MultiPolygon, 4326): polígono de una zona de servicio. La app no lo lee
+// crudo: lo pide como GeoJSON con extensions.st_asgeojson().
+const multiPolygon = customType<{ data: string }>({
+  dataType: () => "extensions.geometry(MultiPolygon, 4326)",
+});
+
 const tstz = (name: string) => timestamp(name, { withTimezone: true });
 
 // --- Tablas -----------------------------------------------------------
@@ -54,11 +60,33 @@ export const appConfig = pgTable("app_config", {
   value: numeric("value", { mode: "number" }).notNull(),
 });
 
+/**
+ * Zona de servicio fija (Norte, Centro, Sur...). Cada fuga cae en la que contiene
+ * su punto (lo calcula leaks_ranked.sector_id). No confundir con zone_id (DBSCAN).
+ */
+export const sectors = pgTable("sectors", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  color: text("color").notNull(), // check: #rrggbb
+  neighborhoods: text("neighborhoods").array().notNull().default(sql`'{}'`),
+  managerName: text("manager_name"),
+  managerPhone: text("manager_phone"),
+  /** Se suman al índice de urgencia de sus fugas (0–15). */
+  priorityPoints: integer("priority_points").notNull().default(0),
+  priorityReason: text("priority_reason"),
+  geom: multiPolygon("geom").notNull(),
+  createdAt: tstz("created_at").notNull().defaultNow(),
+});
+
 export const crews = pgTable("crews", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   active: boolean("active").notNull().default(true),
   createdAt: tstz("created_at").notNull().defaultNow(),
+  /** null = cuadrilla sin zona (comodín). */
+  sectorId: integer("sector_id").references(() => sectors.id, { onDelete: "set null" }),
+  /** Fugas activas que puede llevar a la vez; más que eso = saturada. */
+  maxActiveLeaks: integer("max_active_leaks").notNull().default(5),
 });
 
 /** Fuga agrupada: lo que ve la cuadrilla. */
@@ -138,6 +166,8 @@ export const leaksRanked = pgView("leaks_ranked", {
   urgencyScore: integer("urgency_score").notNull(),
   urgencyLevel: text("urgency_level").$type<UrgencyLevel>().notNull(),
   photoUrl: text("photo_url"),
+  /** Zona de servicio que contiene la fuga; null = fuera de cobertura. */
+  sectorId: integer("sector_id"),
 }).existing();
 
 /** Clusters de ≥3 fugas activas en 250 m (posible falla en red primaria). */
@@ -149,4 +179,6 @@ export const zonesRanked = pgView("zones_ranked", {
   centerLat: numeric("center_lat", { mode: "number" }).notNull(),
   centerLng: numeric("center_lng", { mode: "number" }).notNull(),
   leakIds: uuid("leak_ids").array().notNull(),
+  /** Zona de servicio donde cae la mayoría de sus fugas. */
+  sectorId: integer("sector_id"),
 }).existing();
