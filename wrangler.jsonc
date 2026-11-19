@@ -27,6 +27,11 @@
     "SUPABASE_URL": "https://ekxksaqxnplkgmdcdygk.supabase.co",
     "R2_STORAGE_BUCKET": "reportes",
     "R2_PUBLIC_URL": "https://pub-1c644afb74ba42f194cb1e69ad74203e.r2.dev",
-    "CLUSTER_RADIUS_METERS": "100"
+    "CLUSTER_RADIUS_METERS": "100",
+    // Aviso en tiempo real (src/lib/mqtt.ts). El broker es público: el topic no es
+    // secreto (lo usa el navegador), solo difícil de adivinar. El front debe usar
+    // el mismo valor en NUXT_PUBLIC_MQTT_TOPIC. Sin MQTT_URL no se publica nada.
+    "MQTT_URL": "wss://broker.emqx.io:8084/mqtt",
+    "MQTT_TOPIC": "agua-alerta/80350e6515d7/leaks"
   }
 }

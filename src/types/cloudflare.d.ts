@@ -15,4 +15,6 @@ declare module "cloudflare:workers" {
     FOTOS: R2Bucket;
     HYPERDRIVE?: Hyperdrive;
   };
+  /** ctx.waitUntil() del request en curso: mantiene vivo el Worker tras responder. */
+  export function waitUntil(promise: Promise<unknown>): void;
 }

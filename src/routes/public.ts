@@ -16,6 +16,7 @@ import {
   Zone,
   toPin,
 } from "../lib/schemas";
+import { notifyLeakEvent } from "../lib/mqtt";
 import { PHOTO_KEY_PATTERN, savePhoto } from "../lib/storage";
 import { createReport } from "../services/reports";
 
@@ -154,6 +155,8 @@ export const publicRoutes = new Elysia({ tags: ["Ciudadano"] })
       if (!result.ok) {
         return result.status === 404 ? status(404, { error: result.error }) : status(409, { error: result.error });
       }
+      // Ya hubo commit: avisa al dashboard sin retrasar la respuesta.
+      notifyLeakEvent({ tipo: result.action, leak_id: result.leakId });
       return status(201, {
         action: result.action,
         leak_id: result.leakId,
@@ -191,7 +194,8 @@ export const publicRoutes = new Elysia({ tags: ["Ciudadano"] })
       detail: {
         summary: "Crear reporte o confirmación",
         description:
-          "Con `leak_id` confirma esa fuga. Con `force_new: true` crea una nueva (\"Es otra fuga\"). Sin ninguno, el servidor agrupa por radio interno. 409 si el dispositivo ya reportó esa fuga o si la fuga está cerrada.",
+          "Con `leak_id` confirma esa fuga. Con `force_new: true` crea una nueva (\"Es otra fuga\"). Sin ninguno, el servidor agrupa por radio interno. 409 si el dispositivo ya reportó esa fuga o si la fuga está cerrada.\n\n" +
+          "Tras guardar publica `{ \"tipo\": \"created\" | \"confirmed\", \"leak_id\" }` en el broker MQTT (`MQTT_TOPIC`, QoS 0, sin retain). Es solo un aviso: el dashboard debe volver a pedir `GET /admin/leaks`.",
       },
     },
   )
