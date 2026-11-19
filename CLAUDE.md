@@ -19,7 +19,7 @@ Solo puntúa lo que se demuestra en vivo (Prototipo funcional 45 pts, Impacto 25
 - `src/index.ts`: arma la app: CORS, OpenAPI/Scalar en `/docs` (spec en `/docs/json`), `onError`, `GET /`, `GET /health`.
 - `src/routes/public.ts`: app ciudadana, sin login. `src/routes/admin.ts`: app admin (`/admin/*`), JWT.
 - `src/services/reports.ts`: `createReport()`, la regla de agrupación de `POST /reports` (transacción + advisory lock global).
-- `src/lib/`: `config.ts` (lee `app_config`, `radiiFor()`), `auth.ts` (JWT HS256 con `jose` + macro `auth: true`), `storage.ts` (fotos a R2), `schemas.ts` (esquemas TypeBox de entrada/salida y mapeo fila → JSON).
+- `src/lib/`: `config.ts` (lee `app_config`, `radiiFor()`), `auth.ts` (JWT HS256 con `jose` + macro `auth: true`), `storage.ts` (fotos a R2), `mqtt.ts` (aviso en tiempo real), `schemas.ts` (esquemas TypeBox de entrada/salida y mapeo fila → JSON).
 - `src/db/schema.ts`: espejo Drizzle de tablas, enums y vistas. `src/db/index.ts`: `withDb()` (una conexión por request, porque en Workers no se comparten), `findNearbyLeaks()` y re-exporta el esquema.
 - `scripts/crear-usuario.ts` (`bun run usuario:crear <email> "<nombre>" [admin|operador]`): alta de usuarios del panel; corre en Bun, no en el Worker.
 - `supabase/migrations/`: SQL aplicado en Supabase vía MCP (`apply_migration`). **Es la fuente de verdad del esquema; no se usa drizzle-kit.** Si cambias el SQL, actualiza `src/db/schema.ts`.
@@ -53,6 +53,7 @@ Documentación interactiva en `/docs` (Scalar, versión fija). Convenciones: JSO
 - **Enums en esquemas: usar `oneOf()` de `src/lib/schemas.ts`, nunca `t.UnionEnum` directo.** El de Elysia trae `default: values[0]` y rellena los campos opcionales ausentes: un `PATCH` de solo `crew_id` llegaba con `status: "pendiente"`.
 - Consultas con `db.execute()` (SQL directo): el driver devuelve fechas como texto, no `Date`. Formatearlas en SQL (ver `findNearbyLeaks`).
 - Sin rate limit todavía (decisiones-tecnicas §6 pide 10 reportes/hora por IP).
+- **Tiempo real por MQTT**: tras el commit, `POST /reports` llama `notifyLeakEvent()` (`src/lib/mqtt.ts`), que publica `{ tipo: "created" | "confirmed", leak_id }` en `MQTT_TOPIC` del broker público `MQTT_URL` (vars de `wrangler.jsonc`), con QoS 0 y sin retain. Es solo un aviso: el dashboard revalida con `GET /admin/leaks`. Va en `waitUntil` (cada publicación tarda ~1 s) y nunca lanza: si el broker falla, el reporte responde 201 igual y solo queda en logs. La guía para el front (composable de Nuxt y esquema zod) está en [Documentacion/tiempo-real-dashboard.md](Documentacion/tiempo-real-dashboard.md).
 
 ## Despliegue
 
@@ -81,6 +82,8 @@ No hay tests: el script `test` de `package.json` es un placeholder que sale con 
 - `tsconfig.json` usa `"types": ["bun-types"]`, `module: ES2022`, `moduleResolution: bundler` y `strict: true`.
 - Variables: en Workers llegan por `process.env` (flag `nodejs_compat`), también a nivel de módulo. No secretas en `vars` de `wrangler.jsonc`; secretas (`JWT_SECRET`) con `wrangler secret put`. En local, wrangler lee `.env`, incluida `CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE` para emular Hyperdrive. `CORS_ORIGIN` (opcional) acepta varios orígenes separados por coma.
 - Los bindings (R2 `FOTOS`, `HYPERDRIVE`) **no** están en `process.env`: se importan con `import { env } from "cloudflare:workers"`. Sus tipos mínimos están en `src/types/cloudflare.d.ts` (no se usa `@cloudflare/workers-types` porque choca con `bun-types`).
+- `ctx` no llega a los handlers (el adapter de Elysia llama `app.fetch(request)` sin `env` ni `ctx`). Para trabajo después de responder usar `waitUntil` de `cloudflare:workers`.
+- mqtt.js funciona en el Worker: wrangler toma su build de navegador (condición `browser`) y, como el global es un `*WorkerGlobalScope`, usa el `WebSocket` nativo. En Bun **no** sirve por WebSocket (su build de Node usa `ws`, que Bun no soporta): para probar desde scripts usa Node o `mqtt sub` por TCP 1883.
 - En `wrangler dev` las fotos van al R2 local simulado, así que su `photo_url` pública no existe. Para usar el bucket real en dev, agregar `"remote": true` al binding.
 - El campo `"module": "src/index.js"` de `package.json` y el `.gitignore` (plantilla de Next.js) son restos del scaffold; el punto de entrada real es `src/index.ts`.
 - `elysia` está fijado a `latest`.
