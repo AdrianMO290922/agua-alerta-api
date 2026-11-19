@@ -46,8 +46,10 @@ No hay frontend todavía (será Nuxt; ver §3 de decisiones-tecnicas).
 Documentación interactiva en `/docs` (Scalar, versión fija). Convenciones: JSON en snake_case, fechas ISO 8601, errores como `{ "error": "mensaje" }`; los errores de validación son 422 con el formato propio de Elysia.
 
 - Ciudadano: `GET /leaks?bbox=`, `GET /leaks/nearby`, `POST /uploads` (multipart; el Worker guarda en R2 y devuelve `photo_key`, porque el binding de R2 no puede firmar URLs), `POST /reports`, `GET /zones`.
-- Admin: `POST /admin/login` → JWT de 12 h (`Authorization: Bearer`), `GET /admin/me`, `GET /admin/crews`, `GET /admin/leaks?status=`, `PATCH /admin/leaks/:id`, `POST /admin/zones/assign`.
+- Admin: `POST /admin/register` y `POST /admin/login` → `{ token, expires_at, user }` (JWT de 12 h, `Authorization: Bearer`), `GET /admin/me`, `GET /admin/crews`, `GET /admin/leaks?status=`, `PATCH /admin/leaks/:id`, `POST /admin/zones/assign`.
+- Registro: abierto si la tabla `users` está vacía (primer usuario) o en modo pruebas; si no, exige token de un `admin` (401 sin token, 403 si es `operador`). Rol `operador` por defecto.
 - Rutas protegidas: agregar `auth: true` a la ruta (macro de `src/lib/auth.ts`); deja `user` en el contexto y pone el candado en la documentación. El rol viaja en el JWT para cuando haya rutas solo de `admin`.
+- **Modo pruebas** (`AUTH_DISABLED: "true"` en `vars` de `wrangler.jsonc`, activo ahora para que el front pruebe todo): las rutas con `auth: true` dejan pasar sin token con un usuario ficticio admin ("Modo pruebas (sin login)"); si llega un token válido se usa ese usuario. `GET /` y `/docs` lo avisan. **Ponerlo en `"false"` antes de la demo.** Para probar el modo con auth en local: `wrangler dev --var AUTH_DISABLED:false`.
 - **Enums en esquemas: usar `oneOf()` de `src/lib/schemas.ts`, nunca `t.UnionEnum` directo.** El de Elysia trae `default: values[0]` y rellena los campos opcionales ausentes: un `PATCH` de solo `crew_id` llegaba con `status: "pendiente"`.
 - Consultas con `db.execute()` (SQL directo): el driver devuelve fechas como texto, no `Date`. Formatearlas en SQL (ver `findNearbyLeaks`).
 - Sin rate limit todavía (decisiones-tecnicas §6 pide 10 reportes/hora por IP).
@@ -56,7 +58,8 @@ Documentación interactiva en `/docs` (Scalar, versión fija). Convenciones: JSO
 
 - Producción: https://agua-alerta-api.adrian9012.workers.dev (docs en `/docs`).
 - **No desplegar con `--minify`.** Elysia decide qué partes del request procesar (p. ej. `headers`) leyendo el código fuente de cada handler; minificado no lo detecta y las rutas protegidas daban 500. Producción debe correr el mismo código que `wrangler dev`.
-- CORS abierto a cualquier origen (sin `CORS_ORIGIN` en `wrangler.jsonc`), por decisión del equipo durante el hackathon.
+- CORS abierto a cualquier origen (sin `CORS_ORIGIN` en `wrangler.jsonc`) y modo pruebas de auth activo, por decisión del equipo durante el hackathon.
+- El front ya usa la API de producción, que comparte la base con `wrangler dev`: no asumir que los datos de demo siguen como los dejó `seed.sql`.
 - Secretos del Worker: solo `JWT_SECRET`. `DATABASE_URL` no hace falta allí (la conexión va por Hyperdrive).
 
 ## Comandos
